@@ -11,7 +11,7 @@ const Header = () => {
         </div>
         <div>
           <h1 className="text-4xl font-bold gradient-text-blue">
-            Solaris Dashboard
+            Solaris Dashboard for Real-Time Analytics
           </h1>
           <p className="text-sm text-gray-500 mt-1 flex items-center gap-1.5">
             <FiZap className="h-4 w-4 text-gray-400" />
