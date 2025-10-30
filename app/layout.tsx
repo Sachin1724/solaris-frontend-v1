@@ -10,7 +10,7 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: "Solaris Dashboard",
+  title: "Solaris Analytics Dashboard",
   description: "Live data from the Solaris ESP32 Logger",
 };
 
