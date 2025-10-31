@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import axios from "axios";
+// --- Import Socket.io Client ---
+import { io, Socket } from "socket.io-client";
 import StatCard from "./StatCard";
 import DataChart from "./DataChart";
 import DataTable from "./DataTable";
@@ -19,12 +21,12 @@ interface SolarData {
   _id: string;
   temperature: number;
   humidity: number;
-  dustDensity: number;
+  dust: number;
   voltage: number;
   current: number;
   power: number;
-  ldrLeft: number;
-  ldrRight: number;
+  ldr: number;
+  ldrPercent: number;
   createdAt: string;
 }
 
@@ -49,7 +51,8 @@ const Dashboard = () => {
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
-  const fetchData = useCallback(async () => {
+  // --- MODIFIED: Renamed to fetchData for clarity ---
+  const fetchHistoricalData = useCallback(async () => {
     setLoading(true);
     setError(null);
     if (!API_URL) {
@@ -79,9 +82,45 @@ const Dashboard = () => {
     }
   }, [API_URL, dateRange, sortConfig]);
 
+  // --- useEffect for initial data fetch ---
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    fetchHistoricalData();
+  }, [fetchHistoricalData]);
+
+  // --- NEW: useEffect for Socket.io ---
+  useEffect(() => {
+    if (!API_URL) return;
+
+    // Connect to the Socket.io server
+    const socket: Socket = io(API_URL);
+
+    socket.on("connect", () => {
+      console.log("[Socket.io] Connected to server");
+    });
+
+    // Listen for the 'newData' event
+    socket.on("newData", (newEntry: SolarData) => {
+      console.log("[Socket.io] Received new data:", newEntry);
+      
+      // Add the new data to the top of the list
+      // This instantly updates the UI
+      setData((prevData) => [newEntry, ...prevData]);
+    });
+
+    socket.on("disconnect", () => {
+      console.log("[Socket.io] Disconnected from server");
+    });
+
+    socket.on("connect_error", (err) => {
+      console.error("[Socket.io] Connection Error:", err.message);
+    });
+
+    // Cleanup on component unmount
+    return () => {
+      socket.disconnect();
+    };
+  }, [API_URL]);
+  // --- END of new Socket.io useEffect ---
 
   const latestData = useMemo(() => {
     return data.length > 0 ? data[0] : null;
@@ -156,8 +195,8 @@ const Dashboard = () => {
           iconColor="#eab308"
         />
         <StatCard
-          title="Dust Density"
-          value={`${latestData?.dustDensity?.toFixed(2) ?? "N/A"} µg/m³`}
+          title="Dust"
+          value={`${latestData?.dust?.toFixed(2) ?? "N/A"} µg/m³`}
           icon={<FaWind className="h-5 w-5 text-[#6b7280]" />}
           iconColor="#6b7280"
         />
@@ -165,7 +204,7 @@ const Dashboard = () => {
           title="LDR Avg"
           value={`${
             latestData
-              ? ((latestData.ldrLeft + latestData.ldrRight) / 2).toFixed(0)
+              ? ((latestData.ldr + latestData.ldrPercent) / 2).toFixed(0)
               : "N/A"
           }`}
           icon={<BsSun className="h-5 w-5 text-[#f97316]" />}
@@ -174,7 +213,8 @@ const Dashboard = () => {
       </div>
 
       {/* Section 2: Filters */}
-      <Filters onFilter={handleFilter} onRefresh={fetchData} />
+      {/* Refresh button now fetches historical data, real-time updates are separate */}
+      <Filters onFilter={handleFilter} onRefresh={fetchHistoricalData} />
 
       {/* Section 3: Charts (NOW WITH ALL STATS) */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 2xl:grid-cols-3">
@@ -202,16 +242,16 @@ const Dashboard = () => {
         />
         <DataChart
           data={data}
-          title="Dust Density (µg/m³)"
-          dataKey="dustDensity"
+          title="Dust (µg/m³)"
+          dataKey="dust"
           color="#6b7280"
         />
         <DataChart
           data={data}
           title="LDR Light Levels"
-          dataKey="ldrLeft"
+          dataKey="ldr"
           color="#f97316"
-          dataKey2="ldrRight"
+          dataKey2="ldrPercent"
           color2="#f59e0b"
         />
       </div>

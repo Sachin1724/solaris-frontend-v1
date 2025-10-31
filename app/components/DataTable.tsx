@@ -2,17 +2,17 @@
 import { format } from "date-fns";
 import { FaArrowUp, FaArrowDown } from "react-icons/fa";
 
-// Define the structure of your data
+// Define the structure of your data (CHANGED)
 interface SolarData {
   _id: string;
   temperature: number;
   humidity: number;
-  dustDensity: number;
+  dust: number; // CHANGED from dustDensity
   voltage: number;
   current: number;
   power: number;
-  ldrLeft: number;
-  ldrRight: number;
+  ldr: number; // CHANGED from ldrLeft
+  ldrPercent: number; // CHANGED from ldrRight
   createdAt: string;
 }
 
@@ -38,6 +38,7 @@ const DataTable = ({ data, sortConfig, requestSort }: DataTableProps) => {
     return <FaArrowDown className="ml-1 h-3 w-3 text-primary-blue" />;
   };
 
+  // --- CHANGED HEADER ---
   const headers: { key: keyof SolarData; label: string }[] = [
     { key: "createdAt", label: "Timestamp" },
     { key: "power", label: "Power (W)" },
@@ -45,7 +46,7 @@ const DataTable = ({ data, sortConfig, requestSort }: DataTableProps) => {
     { key: "current", label: "Current (A)" },
     { key: "temperature", label: "Temp (°C)" },
     { key: "humidity", label: "Humidity (%)" },
-    { key: "dustDensity", label: "Dust (µg/m³)" },
+    { key: "dust", label: "Dust (µg/m³)" }, // CHANGED from dustDensity
   ];
 
   return (
@@ -90,8 +91,9 @@ const DataTable = ({ data, sortConfig, requestSort }: DataTableProps) => {
                 <td className="whitespace-nowrap px-6 py-4 text-sm font-semibold text-cyan-600">
                   {row.humidity?.toFixed(1) ?? "N/A"}
                 </td>
+                {/* --- CHANGED DATA CELL --- */}
                 <td className="whitespace-nowrap px-6 py-4 text-sm font-semibold text-gray-500">
-                  {row.dustDensity?.toFixed(2) ?? "N/A"}
+                  {row.dust?.toFixed(2) ?? "N/A"}
                 </td>
               </tr>
             ))}
