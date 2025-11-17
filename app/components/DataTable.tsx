@@ -1,18 +1,21 @@
 "use client";
-import { format } from "date-fns";
+import { format, isValid } from "date-fns"; // Import isValid
 import { FaArrowUp, FaArrowDown } from "react-icons/fa";
 
-// Define the structure of your data (CHANGED)
+// ---
+// This interface MUST match the MongoDB schema
+// ---
 interface SolarData {
   _id: string;
   temperature: number;
   humidity: number;
-  dust: number; // CHANGED from dustDensity
+  dustDensity: number; // Use schema key
   voltage: number;
   current: number;
   power: number;
-  ldr: number; // CHANGED from ldrLeft
-  ldrPercent: number; // CHANGED from ldrRight
+  ldrRaw: number; // Use schema key
+  ldrPercent: number;
+  tiltAngle: number; // ADDED tiltAngle
   createdAt: string;
 }
 
@@ -38,7 +41,13 @@ const DataTable = ({ data, sortConfig, requestSort }: DataTableProps) => {
     return <FaArrowDown className="ml-1 h-3 w-3 text-primary-blue" />;
   };
 
-  // --- CHANGED HEADER ---
+  // Helper function to safely format dates
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    // Check if the date is valid before formatting
+    return isValid(date) ? format(date, "yyyy-MM-dd HH:mm:ss") : "Invalid Date";
+  };
+
   const headers: { key: keyof SolarData; label: string }[] = [
     { key: "createdAt", label: "Timestamp" },
     { key: "power", label: "Power (W)" },
@@ -46,7 +55,8 @@ const DataTable = ({ data, sortConfig, requestSort }: DataTableProps) => {
     { key: "current", label: "Current (A)" },
     { key: "temperature", label: "Temp (°C)" },
     { key: "humidity", label: "Humidity (%)" },
-    { key: "dust", label: "Dust (µg/m³)" }, // CHANGED from dustDensity
+    { key: "dustDensity", label: "Dust (µg/m³)" },
+    { key: "tiltAngle", label: "Tilt (°)" },
   ];
 
   return (
@@ -74,7 +84,8 @@ const DataTable = ({ data, sortConfig, requestSort }: DataTableProps) => {
             {data.map((row) => (
               <tr key={row._id} className="transition-colors hover:bg-blue-50/50">
                 <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-gray-700">
-                  {format(new Date(row.createdAt), "yyyy-MM-dd HH:mm:ss")}
+                  {/* --- USE THE SAFE FORMATTER --- */}
+                  {formatDate(row.createdAt)}
                 </td>
                 <td className="whitespace-nowrap px-6 py-4 text-sm font-semibold text-green-600">
                   {row.power?.toFixed(2) ?? "N/A"}
@@ -91,9 +102,11 @@ const DataTable = ({ data, sortConfig, requestSort }: DataTableProps) => {
                 <td className="whitespace-nowrap px-6 py-4 text-sm font-semibold text-cyan-600">
                   {row.humidity?.toFixed(1) ?? "N/A"}
                 </td>
-                {/* --- CHANGED DATA CELL --- */}
                 <td className="whitespace-nowrap px-6 py-4 text-sm font-semibold text-gray-500">
-                  {row.dust?.toFixed(2) ?? "N/A"}
+                  {row.dustDensity?.toFixed(2) ?? "N/A"}
+                </td>
+                <td className="whitespace-nowrap px-6 py-4 text-sm font-semibold text-purple-600">
+                  {row.tiltAngle?.toFixed(1) ?? "N/A"}
                 </td>
               </tr>
             ))}

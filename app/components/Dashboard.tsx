@@ -2,35 +2,38 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import axios from "axios";
-// --- Import Socket.io Client ---
 import { io, Socket } from "socket.io-client";
 import StatCard from "./StatCard";
 import DataChart from "./DataChart";
 import DataTable from "./DataTable";
 import Filters from "./Filters";
+// --- 1. IMPORT THE NEW COMPONENT ---
+import TiltAdvisorCard from "./TiltAdvisorCard"; // Fixed import
 
 // Importing React Icons
 import { FaTemperatureHigh, FaWind } from "react-icons/fa";
 import { WiHumidity } from "react-icons/wi";
-import { MdOutlinePower } from "react-icons/md";
+import { MdOutlinePower, MdOutlineNavigation } from "react-icons/md";
 import { BsLightningFill, BsSun, BsExclamationTriangleFill } from "react-icons/bs";
-import { IoWater } from "react-icons/io5";
 
-// Define the structure of your data
+// ---
+// This interface MUST match the MongoDB schema
+// ---
 interface SolarData {
   _id: string;
   temperature: number;
   humidity: number;
-  dust: number;
+  dustDensity: number;
+  dustVoltage: number;
   voltage: number;
   current: number;
   power: number;
-  ldr: number;
+  ldrRaw: number;
   ldrPercent: number;
+  tiltAngle: number;
   createdAt: string;
 }
 
-// Define the sort configuration
 interface SortConfig {
   key: keyof SolarData;
   direction: "asc" | "desc";
@@ -49,9 +52,14 @@ const Dashboard = () => {
     endDate: "",
   });
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL;
+  // --- 2. ADD STATE FOR LOCATION DATA (to feed the card) ---
+  const [optimalTilt, setOptimalTilt] = useState<number | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
 
-  // --- MODIFIED: Renamed to fetchData for clarity ---
+  // Use the env variable, or default to the Render URL
+  const API_URL =
+    process.env.NEXT_PUBLIC_API_URL || "https://solaris-backend.onrender.com";
+
   const fetchHistoricalData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -76,7 +84,9 @@ const Dashboard = () => {
       setData(response.data.data);
     } catch (err) {
       console.error("Error fetching data:", err);
-      setError("Failed to fetch data from the server.");
+      setError(
+        `Failed to fetch data from: ${API_URL}/api/data. Please ensure the backend server is running and accessible.`
+      );
     } finally {
       setLoading(false);
     }
@@ -87,7 +97,29 @@ const Dashboard = () => {
     fetchHistoricalData();
   }, [fetchHistoricalData]);
 
-  // --- NEW: useEffect for Socket.io ---
+  // --- 3. ADD USEEFFECT FOR GEOLOCATION (to get optimal tilt) ---
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const latitude = position.coords.latitude;
+          // Simple rule: Optimal fixed tilt = absolute latitude
+          setOptimalTilt(Math.abs(latitude));
+          setLocationError(null);
+        },
+        (err) => {
+          console.error("Error getting location:", err);
+          setLocationError(
+            "Location permission denied. Cannot calculate optimal tilt."
+          );
+        }
+      );
+    } else {
+      setLocationError("Geolocation is not supported by this browser.");
+    }
+  }, []); // Empty array, runs once on mount
+
+  // --- useEffect for Socket.io ---
   useEffect(() => {
     if (!API_URL) return;
 
@@ -95,15 +127,12 @@ const Dashboard = () => {
     const socket: Socket = io(API_URL);
 
     socket.on("connect", () => {
-      console.log("[Socket.io] Connected to server");
+      console.log(`[Socket.io] Connected to server: ${API_URL}`);
     });
 
     // Listen for the 'newData' event
     socket.on("newData", (newEntry: SolarData) => {
       console.log("[Socket.io] Received new data:", newEntry);
-      
-      // Add the new data to the top of the list
-      // This instantly updates the UI
       setData((prevData) => [newEntry, ...prevData]);
     });
 
@@ -112,7 +141,7 @@ const Dashboard = () => {
     });
 
     socket.on("connect_error", (err) => {
-      console.error("[Socket.io] Connection Error:", err.message);
+      console.error(`[Socket.io] Connection Error to ${API_URL}:`, err.message);
     });
 
     // Cleanup on component unmount
@@ -120,7 +149,7 @@ const Dashboard = () => {
       socket.disconnect();
     };
   }, [API_URL]);
-  // --- END of new Socket.io useEffect ---
+  // --- END of Socket.io useEffect ---
 
   const latestData = useMemo(() => {
     return data.length > 0 ? data[0] : null;
@@ -145,13 +174,10 @@ const Dashboard = () => {
           <BsExclamationTriangleFill className="h-8 w-8 text-red-500" />
         </div>
         <h2 className="text-2xl font-bold text-red-600 mb-3">Connection Error</h2>
-        <p className="text-gray-600 mb-4">{error}</p>
+        <p className="text-gray-600 mb-4 font-mono text-sm">{error}</p>
         <p className="text-sm text-gray-500">
-          Please ensure your backend is running and the{" "}
-          <code className="rounded bg-gray-100 px-2 py-1 text-blue-600 font-mono text-xs">
-            NEXT_PUBLIC_API_URL
-          </code>{" "}
-          is set correctly.
+          This usually means the backend server is offline or the URL in your
+          .env.local file is incorrect.
         </p>
       </div>
     );
@@ -169,7 +195,7 @@ const Dashboard = () => {
   return (
     <div className="flex flex-col gap-8 fade-in">
       {/* Section 1: Stat Cards */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-7">
         <StatCard
           title="Temperature"
           value={`${latestData?.temperature?.toFixed(1) ?? "N/A"} °C`}
@@ -196,27 +222,36 @@ const Dashboard = () => {
         />
         <StatCard
           title="Dust"
-          value={`${latestData?.dust?.toFixed(2) ?? "N/A"} µg/m³`}
+          value={`${latestData?.dustDensity?.toFixed(2) ?? "N/A"} µg/m³`}
           icon={<FaWind className="h-5 w-5 text-[#6b7280]" />}
           iconColor="#6b7280"
         />
         <StatCard
-          title="LDR Avg"
-          value={`${
-            latestData
-              ? ((latestData.ldr + latestData.ldrPercent) / 2).toFixed(0)
-              : "N/A"
-          }`}
+          title="LDR (Left)"
+          value={`${latestData?.ldrPercent?.toFixed(0) ?? "N/A"} %`}
           icon={<BsSun className="h-5 w-5 text-[#f97316]" />}
           iconColor="#f97316"
+        />
+        <StatCard
+          title="Tilt Angle"
+          value={`${latestData?.tiltAngle?.toFixed(1) ?? "N/A"} °`}
+          icon={<MdOutlineNavigation className="h-5 w-5 text-[#9333ea]" />}
+          iconColor="#9333ea"
         />
       </div>
 
       {/* Section 2: Filters */}
-      {/* Refresh button now fetches historical data, real-time updates are separate */}
       <Filters onFilter={handleFilter} onRefresh={fetchHistoricalData} />
 
-      {/* Section 3: Charts (NOW WITH ALL STATS) */}
+      {/* --- 4. HERE IS WHERE THE TILT ADVISOR CARD IS PLACED --- */}
+      <TiltAdvisorCard
+        currentTilt={latestData?.tiltAngle ?? null}
+        optimalTilt={optimalTilt}
+        isLoading={!optimalTilt && !locationError}
+        error={locationError}
+      />
+
+      {/* Section 3: Charts */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 2xl:grid-cols-3">
         <DataChart
           data={data}
@@ -243,16 +278,22 @@ const Dashboard = () => {
         <DataChart
           data={data}
           title="Dust (µg/m³)"
-          dataKey="dust"
+          dataKey="dustDensity"
           color="#6b7280"
         />
         <DataChart
           data={data}
           title="LDR Light Levels"
-          dataKey="ldr"
+          dataKey="ldrRaw"
           color="#f97316"
           dataKey2="ldrPercent"
           color2="#f59e0b"
+        />
+        <DataChart
+          data={data}
+          title="Tilt Angle (°)"
+          dataKey="tiltAngle"
+          color="#9333ea"
         />
       </div>
 
